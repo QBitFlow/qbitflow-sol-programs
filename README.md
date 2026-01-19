@@ -175,8 +175,8 @@ User/Admin → cancel_subscription
 
 ```bash
 # Clone the repository
-git clone https://github.com/QBitFlow/qbitflow-solana-programs.git
-cd qbitflow-solana-programs/sol
+git clone https://github.com/QBitFlow/qbitflow-sol-programs.git
+cd qbitflow-sol-programs
 
 # Install dependencies
 npm install
