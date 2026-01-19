@@ -2,7 +2,7 @@ const { createMint } = require("@solana/spl-token");
 const base58 = require("bs58");
 
 const fs = require("fs");
-const ENV_PATH = "../../.env.development";
+const ENV_PATH = "../.env.development";
 
 if (fs.existsSync(ENV_PATH)) {
 	require("dotenv").config({ path: ENV_PATH });
