@@ -1,0 +1,49 @@
+{
+	"name": "qbitflow-sol-programs",
+	"version": "1.0.0",
+	"description": "QBitFlow is a decentralized payment system that enables non-custodial one-time payments and recurring subscriptions on Ethereum. Built with security and user experience in mind, QBitFlow allows users to pay in ERC20 tokens without holding ETH for gas fees, through an innovative gas refund mechanism.",
+	"scripts": {
+		"lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
+		"lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+	},
+	"keywords": [
+		"qbitflow",
+		"cryptocurrency",
+		"crypto",
+		"payment",
+		"payment-processing",
+		"api",
+		"sdk",
+		"bitcoin",
+		"solana",
+		"ethereum",
+		"blockchain",
+		"subscription",
+		"payment-gateway",
+		"recurring-billing",
+		"api-client",
+		"typescript"
+	],
+	"author": "QBitFlow",
+	"license": "MPL-2.0",
+	"bugs": {
+		"url": "https://github.com:QBitFlow/qbitflow-sol-programs.git/issues"
+	},
+	"homepage": "https://github.com:QBitFlow/qbitflow-sol-programs.git#readme",
+	"dependencies": {
+		"@coral-xyz/anchor": "^0.31.1",
+		"@solana/spl-token": "^0.4.14",
+		"dotenv": "^17.2.3",
+		"ts-node": "^10.9.2"
+	},
+	"devDependencies": {
+		"@types/bn.js": "^5.2.0",
+		"@types/chai": "^5.2.2",
+		"@types/mocha": "^10.0.10",
+		"chai": "^6.0.1",
+		"mocha": "^11.7.2",
+		"prettier": "^3.6.2",
+		"ts-mocha": "^11.1.0",
+		"typescript": "^5.9.2"
+	}
+}
