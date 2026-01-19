@@ -191,6 +191,7 @@ anchor test
 
 # Start local validator and deploy program
 anchor localnet
+node scripts/deploy-local.js .env.development  <co-signer-public-key>
 ```
 
 ## 📝 Program API

@@ -195,7 +195,7 @@ async function main() {
 					"Please provide a valid environment file (.env, .env.test, .env.production, etc.)",
 				);
 			}
-			const pathToEnv = `../../${envFilePath}`;
+			const pathToEnv = `../${envFilePath}`;
 			require("dotenv").config({ path: pathToEnv });
 
 			coSignerPubkey = process.argv[3];
