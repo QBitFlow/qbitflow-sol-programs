@@ -638,38 +638,6 @@ compute_cost_in_tokens = (compute_cost_in_lamports * token_price_in_lamports) / 
 - **Signed data**: User signs refund parameters, preventing manipulation
 
 
-## 🚀 Deployment
-
-### Mainnet Deployment
-
-```bash
-# Build for production
-anchor build --verifiable
-
-# Deploy to mainnet-beta
-anchor deploy --provider.cluster mainnet-beta --program-name qbitflow_payment_system
-
-# Verify deployment
-solana program show <PROGRAM_ID>
-```
-
-### Post-Deployment
-
-1. **Initialize the program**:
-   ```bash
-   anchor run initialize --provider.cluster mainnet-beta
-   ```
-
-2. **Verify authority PDA**:
-   ```bash
-   solana account <AUTHORITY_PDA>
-   ```
-
-3. **Update program upgrade authority** (optional):
-   ```bash
-   solana program set-upgrade-authority <PROGRAM_ID> --new-upgrade-authority <NEW_AUTHORITY>
-   ```
-
 ## 📚 Additional Resources
 
 - **Anchor Documentation**: https://www.anchor-lang.com/
