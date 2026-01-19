@@ -644,7 +644,7 @@ compute_cost_in_tokens = (compute_cost_in_lamports * token_price_in_lamports) / 
 - **Solana Documentation**: https://docs.solana.com/
 - **SPL Token Program**: https://spl.solana.com/token
 - **QBitFlow Website**: https://qbitflow.app
-- **QBitFlow Documentation**: https://docs.qbitflow.app
+- **QBitFlow Documentation**: https://qbitflow.app/docs
 
 
 ## 📄 License
