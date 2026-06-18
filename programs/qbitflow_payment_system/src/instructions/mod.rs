@@ -3,7 +3,17 @@ pub mod payments;
 pub mod subscriptions;
 pub mod permit;
 pub mod compute_refund;
+pub mod mint_check;
+pub mod ed25519;
+pub mod settle;
+pub mod rotate_signer;
+pub mod shared;
 
 pub use initialize::*;
 pub use payments::*;
 pub use subscriptions::*;
+pub use permit::*;
+pub use compute_refund::*;
+pub use settle::*;
+pub use rotate_signer::*;
+pub use shared::*;

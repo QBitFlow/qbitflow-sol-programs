@@ -18,3 +18,5 @@ tmp/
 Anchor.prod.toml
 deployed-addresses.json
 README-local.md
+
+config
