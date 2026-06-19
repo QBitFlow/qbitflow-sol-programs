@@ -501,7 +501,7 @@ pub fn create_subscription(
             max_amount_per_cycle.checked_sub(amount).ok_or(QBitFlowError::Overflow)?,
             compute_refund_params,
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 TransferChecked {
                     from: ctx.accounts.subscriber_token_account.to_account_info(),
                     mint: ctx.accounts.mint.to_account_info(),
@@ -805,7 +805,7 @@ pub fn extend_allowance(
         refund_cap,
         compute_refund_params,
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             TransferChecked {
                 from: ctx.accounts.subscriber_token_account.to_account_info(),
                 mint: ctx.accounts.mint.to_account_info(),
@@ -890,7 +890,7 @@ pub fn update_max_amount_per_cycle(
         refund_cap,
         compute_refund_params,
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             TransferChecked {
                 from: ctx.accounts.subscriber_token_account.to_account_info(),
                 mint: ctx.accounts.mint.to_account_info(),

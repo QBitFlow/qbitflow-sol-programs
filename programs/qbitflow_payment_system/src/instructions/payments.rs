@@ -148,7 +148,7 @@ pub fn process_payment(
     // Platform fee leg (net of the referrer cut)
     system_program::transfer(
         CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.payer.to_account_info(),
                 to: ctx.accounts.fee_recipient.to_account_info(),
@@ -163,7 +163,7 @@ pub fn process_payment(
             .ok_or(QBitFlowError::MissingReferrerAccount)?;
         system_program::transfer(
             CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.system_program.key(),
                 system_program::Transfer {
                     from: ctx.accounts.payer.to_account_info(),
                     to: referrer.to_account_info(),
@@ -179,7 +179,7 @@ pub fn process_payment(
 			.ok_or(QBitFlowError::MissingOrganizationAccount)?;
         system_program::transfer(
             CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.system_program.key(),
                 system_program::Transfer {
                     from: ctx.accounts.payer.to_account_info(),
                     to: organization_fee_recipient.to_account_info(),
@@ -192,7 +192,7 @@ pub fn process_payment(
 	// Merchant leg
     system_program::transfer(
         CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             system_program::Transfer {
                 from: ctx.accounts.payer.to_account_info(),
                 to: ctx.accounts.merchant.to_account_info(),
@@ -255,7 +255,7 @@ fn run_token_payment(
     // Platform fee leg (net of the referrer cut)
     token_interface::transfer_checked(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             TransferChecked {
                 from: ctx.accounts.payer_token_account.to_account_info(),
                 mint: ctx.accounts.mint.to_account_info(),
@@ -273,7 +273,7 @@ fn run_token_payment(
             .ok_or(QBitFlowError::MissingReferrerAccount)?;
         token_interface::transfer_checked(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 TransferChecked {
                     from: ctx.accounts.payer_token_account.to_account_info(),
                     mint: ctx.accounts.mint.to_account_info(),
@@ -290,7 +290,7 @@ fn run_token_payment(
     if amounts.org_fee_amount > 0 {
         token_interface::transfer_checked(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.token_program.key(),
                 TransferChecked {
                     from: ctx.accounts.payer_token_account.to_account_info(),
                     mint: ctx.accounts.mint.to_account_info(),
@@ -306,7 +306,7 @@ fn run_token_payment(
     // Merchant leg
     token_interface::transfer_checked(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             TransferChecked {
                 from: ctx.accounts.payer_token_account.to_account_info(),
                 mint: ctx.accounts.mint.to_account_info(),
@@ -325,7 +325,7 @@ fn run_token_payment(
         u64::MAX,
         compute_refund_params,
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program.key(),
             TransferChecked {
                 from: ctx.accounts.payer_token_account.to_account_info(),
                 mint: ctx.accounts.mint.to_account_info(),

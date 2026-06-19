@@ -28,10 +28,8 @@
 //     the input bytes we already carry as args).
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::ed25519_program;
-use anchor_lang::solana_program::sysvar::instructions::{
-    load_instruction_at_checked, ID as INSTRUCTIONS_ID,
-};
+use solana_sdk_ids::ed25519_program;
+use solana_instructions_sysvar::{load_instruction_at_checked, ID as INSTRUCTIONS_ID};
 
 use crate::errors::*;
 

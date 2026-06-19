@@ -20,7 +20,7 @@
 //     token_program, instructions_sysvar.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions::ID as INSTRUCTIONS_ID;
+use solana_instructions_sysvar::ID as INSTRUCTIONS_ID;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
 use crate::instructions::compute_refund::ComputeRefundData;

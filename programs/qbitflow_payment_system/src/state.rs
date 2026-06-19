@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::hash::hashv;
+use solana_sha256_hasher::hashv;
 use crate::{AUTHORITY_PDA_SEED, FEE_DENOMINATOR, MAX_FEE_PLATFORM_BPS, MAX_FEE_ORGANIZATION_BPS, MAX_REFERRAL_FEE_BPS, MIN_FEE_FOR_CONTRACT_BPS, SUBSCRIPTION_HASH_DOMAIN};
 use crate::errors::*;
 
@@ -15,6 +15,7 @@ use crate::errors::*;
 //   Settled via `settle_merchant_x402_batch`; key rotation is merchant-authorized.
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, AnchorSerialize, AnchorDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum SettleMode {
     Regular = 0,
     X402 = 1,

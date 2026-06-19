@@ -7,7 +7,7 @@
 // Keeping the logic in one place keeps parity honest and shrinks the program.
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::hash::hashv;
+use solana_sha256_hasher::hashv;
 use anchor_spl::token_interface::{self, TransferChecked};
 
 use crate::instructions::compute_refund::{compute_refund, ComputeRefundData};
@@ -105,7 +105,7 @@ fn transfer_checked_pda<'info>(
 ) -> Result<()> {
     token_interface::transfer_checked(
         CpiContext::new_with_signer(
-            token_program.clone(),
+            token_program.key(),
             TransferChecked {
                 from: from.clone(),
                 mint: mint.clone(),
@@ -180,7 +180,7 @@ pub fn distribute_payment_pda<'info>(
         refund_cap,
         compute_refund_params,
         CpiContext::new_with_signer(
-            token_program.clone(),
+            token_program.key(),
             TransferChecked {
                 from: from.clone(),
                 mint: mint.clone(),

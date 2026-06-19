@@ -35,7 +35,7 @@ impl PermitRegistry {
     ) -> Result<()> {
         token_interface::approve(
             CpiContext::new(
-                token_program.to_account_info(),
+                token_program.key(),
                 Approve {
                     to: subscriber_token_account.to_account_info(),
                     delegate: authority.to_account_info(),

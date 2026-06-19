@@ -12,7 +12,7 @@ test-ledger
 .env.test
 
 
-tests/
+tests/accounts
 tmp/
 
 Anchor.prod.toml
@@ -20,3 +20,4 @@ deployed-addresses.json
 README-local.md
 
 config
+.surfpool/
