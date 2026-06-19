@@ -1,6 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import {
+	ASSOCIATED_TOKEN_PROGRAM_ID,
 	createAssociatedTokenAccount,
 	createMint,
 	getAccount,
@@ -2417,6 +2418,476 @@ describe("QbitFlow Payment System", async () => {
 			// No refund was pulled (headroom too small), so the fee recipient balance is unchanged.
 			const after = await testHelper.getBalances(true);
 			expect(after.feeRecipient).to.equal(before.feeRecipient);
+		});
+	});
+
+	// The permit registry is a per-(subscriber, mint) PDA that tracks the SUM of allowances
+	// across ALL of a subscriber's subscriptions on that mint, plus the cumulative amount
+	// actually pulled. There is a SINGLE shared SPL delegate approval on the subscriber's token
+	// account; every create/extend re-approves it to `total_allowance - total_used`. Without the
+	// registry, each subscription would approve only its OWN allowance, clobbering the shared
+	// delegate and silently breaking sibling subscriptions on the same mint. These tests verify
+	// the registry keeps the sum coherent across create / execute / extend / cancel.
+	describe("Permit Registry (multi-subscription accounting)", () => {
+		// Compute refunds for the test token price (see helper.getComputeRefundData/InTokens).
+		// Create signs with 2 keys (owner + subscriber); execute signs with 1 (owner only).
+		const CREATE_REFUND = getComputeRefundInTokens(
+			getComputeRefundData(2).computeCostInLamports,
+		).toNumber();
+		const EXEC_REFUND = getComputeRefundInTokens(
+			getComputeRefundData(1).computeCostInLamports,
+		).toNumber();
+
+		// Fresh, isolated subscriber per test → a clean (subscriber, mint) registry that starts
+		// empty, so absolute total_allowance / total_used assertions are deterministic. The
+		// subscriber needs no SOL: the authority owner (provider wallet) pays all tx fees + rent.
+		let regSubscriber: Keypair;
+		let regSubAta: PublicKey;
+
+		const regPda = () =>
+			permitRegistryPdaFor(regSubscriber.publicKey, tokenAccounts.tokenMint);
+		const subPda = (uuid: number[]) =>
+			subscriptionPdaFor(uuid, regSubscriber.publicKey);
+		const fetchReg = () => program.account.permitRegistry.fetch(regPda());
+		const sleepPeriod = () =>
+			new Promise((r) => setTimeout(r, FREQUENCY * 1000 + 500));
+
+		// chai-as-promised isn't wired up in this suite, so assert "account is gone" by hand.
+		const expectAccountGone = async (p: Promise<any>) => {
+			let threw = false;
+			try {
+				await p;
+			} catch {
+				threw = true;
+			}
+			expect(threw).to.equal(true);
+		};
+
+		const getDelegateInfo = async () => {
+			const acct = await getAccount(provider.connection, regSubAta);
+			return {
+				delegate: acct.delegate ? acct.delegate.toString() : null,
+				amount: Number(acct.delegatedAmount),
+			};
+		};
+
+		beforeEach(async () => {
+			regSubscriber = Keypair.generate();
+			regSubAta = await createAssociatedTokenAccount(
+				provider.connection,
+				accounts.authority, // fee payer for the ATA creation
+				tokenAccounts.tokenMint,
+				regSubscriber.publicKey,
+			);
+			await mintTo(
+				provider.connection,
+				accounts.authority,
+				tokenAccounts.tokenMint,
+				regSubAta,
+				accounts.authority,
+				1_000_000_000,
+			);
+		});
+
+		const createSub = (
+			uuid: number[],
+			args: { amount: BN; maxAmount: BN; allowance: BN },
+		) =>
+			program.methods
+				.createSubscription(
+					uuid,
+					args.amount,
+					args.maxAmount,
+					FREQUENCY,
+					mkFee(FEE_BPS),
+					args.allowance,
+					getComputeRefundData(2),
+					SettleMode.Regular,
+					PublicKey.default,
+				)
+				.accounts({
+					// @ts-ignore — Anchor's generated type wants the resolved PDA; we pass it explicitly.
+					authority: authorityAccountPda,
+					authorityOwner: accounts.authority.publicKey,
+					permitRegistry: regPda(),
+					subscription: subPda(uuid),
+					subscriber: regSubscriber.publicKey,
+					subscriberTokenAccount: regSubAta,
+					merchant: accounts.merchant.publicKey,
+					merchantTokenAccount: tokenAccounts.merchantTokenAccount,
+					feeRecipientTokenAccount: tokenAccounts.authorityTokenAccount,
+					organization: accounts.organizationRecipient.publicKey,
+					organizationTokenAccount: tokenAccounts.organizationTokenAccount,
+					referrer: null,
+					referrerTokenAccount: null,
+					mint: tokenAccounts.tokenMint,
+					tokenProgram: TOKEN_PROGRAM_ID,
+					systemProgram: SystemProgram.programId,
+					associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+				} as any)
+				.signers([regSubscriber])
+				.rpc();
+
+		const executeSub = (uuid: number[], amount: BN) =>
+			program.methods
+				.executeSubscription(
+					amount,
+					uuid,
+					FREQUENCY,
+					mkFee(FEE_BPS),
+					getComputeRefundData(1),
+					SettleMode.Regular,
+					PublicKey.default,
+				)
+				.accounts({
+					// @ts-ignore
+					authority: authorityAccountPda,
+					authorityOwner: accounts.authority.publicKey,
+					permitRegistry: regPda(),
+					subscription: subPda(uuid),
+					subscriber: regSubscriber.publicKey,
+					subscriberTokenAccount: regSubAta,
+					merchantTokenAccount: tokenAccounts.merchantTokenAccount,
+					mint: tokenAccounts.tokenMint,
+					feeRecipientTokenAccount: tokenAccounts.authorityTokenAccount,
+					organizationTokenAccount: tokenAccounts.organizationTokenAccount,
+					referrerTokenAccount: null,
+					tokenProgram: TOKEN_PROGRAM_ID,
+					systemProgram: SystemProgram.programId,
+					associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+				} as any)
+				.rpc();
+
+		const cancelSub = (uuid: number[]) =>
+			program.methods
+				.cancelSubscription(uuid)
+				.accounts({
+					// @ts-ignore
+					authority: authorityAccountPda,
+					owner: accounts.authority.publicKey,
+					permitRegistry: regPda(),
+					subscription: subPda(uuid),
+					subscriber: regSubscriber.publicKey,
+					mint: tokenAccounts.tokenMint,
+				} as any)
+				.signers([regSubscriber])
+				.rpc();
+
+		const forceCancelSub = (uuid: number[]) =>
+			program.methods
+				.forceCancelSubscription(uuid)
+				.accounts({
+					// @ts-ignore
+					authority: authorityAccountPda,
+					authorityOwner: accounts.authority.publicKey,
+					subscriber: regSubscriber.publicKey,
+					permitRegistry: regPda(),
+					subscription: subPda(uuid),
+					mint: tokenAccounts.tokenMint,
+				} as any)
+				.rpc();
+
+		const extendAllow = (uuid: number[], newAllowance: BN) =>
+			program.methods
+				.extendAllowance(uuid, newAllowance, getComputeRefundData(2))
+				.accounts({
+					// @ts-ignore
+					authority: authorityAccountPda,
+					authorityOwner: accounts.authority.publicKey,
+					feeRecipientTokenAccount: tokenAccounts.authorityTokenAccount,
+					subscription: subPda(uuid),
+					permitRegistry: regPda(),
+					subscriber: regSubscriber.publicKey,
+					subscriberTokenAccount: regSubAta,
+					mint: tokenAccounts.tokenMint,
+					tokenProgram: TOKEN_PROGRAM_ID,
+				} as any)
+				.signers([regSubscriber])
+				.rpc();
+
+		it("Creating a second subscription for the same mint sums total_allowance", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			let reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(100_000);
+			expect(reg.totalUsed.toNumber()).to.equal(1000 + CREATE_REFUND);
+
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+			reg = await fetchReg();
+			// total_allowance is the SUM of both subscriptions' allowances.
+			expect(reg.totalAllowance.toNumber()).to.equal(300_000);
+			// total_used is the SUM of both create-time bills (amount + create refund each).
+			expect(reg.totalUsed.toNumber()).to.equal(
+				1000 + CREATE_REFUND + 2000 + CREATE_REFUND,
+			);
+		});
+
+		it("The shared SPL delegate tracks the registry SUM, not the last subscription (no clobber)", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			const reg = await fetchReg();
+			const effective = reg.totalAllowance.toNumber() - reg.totalUsed.toNumber();
+			const del = await getDelegateInfo();
+
+			// The single delegate approval equals the registry-wide effective allowance.
+			expect(del.delegate).to.equal(authorityAccountPda.toString());
+			expect(del.amount).to.equal(effective);
+
+			// Crucially, it is LARGER than subscription B's own remaining allowance — proving
+			// creating B re-approved the delegate to the COMBINED sum rather than overwriting it
+			// with just B's allowance (which would have stranded A).
+			const subB = await program.account.subscription.fetch(subPda(b));
+			const bRemaining =
+				subB.allowance.toNumber() - subB.usedAllowance.toNumber();
+			expect(del.amount).to.be.greaterThan(bRemaining);
+		});
+
+		it("Executing one subscription advances total_used and leaves the sibling untouched", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			await sleepPeriod();
+			await executeSub(a, new BN(5000));
+
+			const reg = await fetchReg();
+			// total_allowance unchanged by an execute; total_used grows by amount + execute refund.
+			expect(reg.totalAllowance.toNumber()).to.equal(300_000);
+			expect(reg.totalUsed.toNumber()).to.equal(
+				1000 + CREATE_REFUND + 2000 + CREATE_REFUND + 5000 + EXEC_REFUND,
+			);
+
+			// Subscription A reflects its own cumulative spend.
+			const subA = await program.account.subscription.fetch(subPda(a));
+			expect(subA.usedAllowance.toNumber()).to.equal(
+				1000 + CREATE_REFUND + 5000 + EXEC_REFUND,
+			);
+			// Subscription B is completely untouched by A's execute.
+			const subB = await program.account.subscription.fetch(subPda(b));
+			expect(subB.usedAllowance.toNumber()).to.equal(2000 + CREATE_REFUND);
+			expect(subB.allowance.toNumber()).to.equal(200_000);
+
+			// Delegate invariant still holds: approval == total_allowance - total_used.
+			const del = await getDelegateInfo();
+			expect(del.amount).to.equal(
+				reg.totalAllowance.toNumber() - reg.totalUsed.toNumber(),
+			);
+		});
+
+		it("Extending one subscription's allowance updates the registry total for the mint", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			// Extend B from 200_000 → 350_000. extend_allowance revokes B's old slice from the
+			// registry (allowance + used), sets the new allowance, re-adds it, and pulls a
+			// best-effort compute refund.
+			await extendAllow(b, new BN(350_000));
+
+			const reg = await fetchReg();
+			// total_allowance = A (100_000) + new B (350_000).
+			expect(reg.totalAllowance.toNumber()).to.equal(450_000);
+			// total_used = A's create bill (unchanged) + B's reset usage (just the extend refund).
+			expect(reg.totalUsed.toNumber()).to.equal(
+				1000 + CREATE_REFUND + CREATE_REFUND,
+			);
+
+			const subB = await program.account.subscription.fetch(subPda(b));
+			expect(subB.allowance.toNumber()).to.equal(350_000);
+			// extend resets B's used_allowance to just the refund taken by this call.
+			expect(subB.usedAllowance.toNumber()).to.equal(CREATE_REFUND);
+
+			// Delegate was re-approved upward to the NEW registry-wide effective allowance.
+			// Note: extend re-approves to (total_allowance - total_used) measured BEFORE its
+			// best-effort compute refund. That refund is authorized by the subscriber directly
+			// (CpiContext::new, not the PDA delegate), so — unlike create/execute, whose refund
+			// runs through the PDA and decrements the approval — it does NOT decrement the
+			// delegate here. Hence the approval sits one refund above the post-refund effective.
+			const del = await getDelegateInfo();
+			expect(del.delegate).to.equal(authorityAccountPda.toString());
+			expect(del.amount).to.equal(
+				reg.totalAllowance.toNumber() - reg.totalUsed.toNumber() + CREATE_REFUND,
+			);
+		});
+
+		it("Cancelling one subscription removes only its slice, keeps the sibling valid & executable, and does NOT revoke the delegate", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			const delBefore = await getDelegateInfo();
+			expect(delBefore.delegate).to.equal(authorityAccountPda.toString());
+
+			// Cancel A while its next payment is still in the future (immediately after create).
+			await cancelSub(a);
+
+			// Registry now reflects ONLY B's slice — A's allowance and used are removed.
+			let reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(200_000);
+			expect(reg.totalUsed.toNumber()).to.equal(2000 + CREATE_REFUND);
+
+			// A is gone; B is still present and unchanged.
+			await expectAccountGone(program.account.subscription.fetch(subPda(a)));
+			const subB = await program.account.subscription.fetch(subPda(b));
+			expect(subB.allowance.toNumber()).to.equal(200_000);
+
+			// The shared SPL delegate is UNTOUCHED by the cancel — same delegate, same amount.
+			// Revoking it here would break B (the program could no longer pull B's payments).
+			const delAfter = await getDelegateInfo();
+			expect(delAfter.delegate).to.equal(authorityAccountPda.toString());
+			expect(delAfter.amount).to.equal(delBefore.amount);
+			expect(delAfter.amount).to.be.greaterThan(0);
+
+			// And B is still fully executable after A's cancel.
+			await sleepPeriod();
+			await executeSub(b, new BN(5000));
+
+			reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(200_000);
+			expect(reg.totalUsed.toNumber()).to.equal(
+				2000 + CREATE_REFUND + 5000 + EXEC_REFUND,
+			);
+		});
+
+		it("Force-cancel removes the cancelled subscription's FULL used (including billed spend) and the sibling still executes", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			// Bill A once so its used_allowance exceeds the create bill — then force-cancel it.
+			await sleepPeriod();
+			await executeSub(a, new BN(5000));
+
+			// force_cancel bypasses the next_payment_due check, so no timing race here.
+			await forceCancelSub(a);
+
+			// A's entire slice (allowance 100_000 + its full used incl. the 5000 execute) is
+			// removed; the registry is left with exactly B's slice.
+			let reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(200_000);
+			expect(reg.totalUsed.toNumber()).to.equal(2000 + CREATE_REFUND);
+
+			// B is still billable.
+			await executeSub(b, new BN(3000));
+			reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(200_000);
+			expect(reg.totalUsed.toNumber()).to.equal(
+				2000 + CREATE_REFUND + 3000 + EXEC_REFUND,
+			);
+		});
+
+		it("Cancelling the LAST subscription closes the registry account", async () => {
+			const a = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+
+			// Sanity: registry exists with A's slice.
+			const reg = await fetchReg();
+			expect(reg.totalAllowance.toNumber()).to.equal(100_000);
+
+			// Cancelling the only subscription drops total_allowance to 0 → registry is closed.
+			await cancelSub(a);
+			await expectAccountGone(fetchReg());
+		});
+
+		it("Creating another subscription after a partial cancel re-grows the registry and re-approves the delegate to the new sum", async () => {
+			const a = testHelper.generateUuid();
+			const b = testHelper.generateUuid();
+			const c = testHelper.generateUuid();
+			await createSub(a, {
+				amount: new BN(1000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(100_000),
+			});
+			await createSub(b, {
+				amount: new BN(2000),
+				maxAmount: new BN(50_000),
+				allowance: new BN(200_000),
+			});
+
+			// Cancel A, leaving only B in the registry.
+			await cancelSub(a);
+
+			// New subscription C on the same (subscriber, mint) reuses the existing registry.
+			await createSub(c, {
+				amount: new BN(1500),
+				maxAmount: new BN(50_000),
+				allowance: new BN(75_000),
+			});
+
+			const reg = await fetchReg();
+			// total_allowance = B (200_000) + C (75_000); A's slice is gone.
+			expect(reg.totalAllowance.toNumber()).to.equal(275_000);
+			expect(reg.totalUsed.toNumber()).to.equal(
+				2000 + CREATE_REFUND + 1500 + CREATE_REFUND,
+			);
+
+			// Delegate re-approved to the new registry-wide effective allowance.
+			const del = await getDelegateInfo();
+			expect(del.delegate).to.equal(authorityAccountPda.toString());
+			expect(del.amount).to.equal(
+				reg.totalAllowance.toNumber() - reg.totalUsed.toNumber(),
+			);
 		});
 	});
 
