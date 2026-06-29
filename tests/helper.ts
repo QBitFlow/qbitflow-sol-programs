@@ -196,8 +196,10 @@ class TestHelper {
 			authorityOwner: this.accounts.authority.publicKey,
 			feeRecipient: this.accounts.authority.publicKey,
 			merchant: this.accounts.merchant.publicKey,
-			organizationFeeRecipient: null as PublicKey | null,
-			referrer: null as PublicKey | null,
+			// Anchor no longer treats PublicKey.default as an empty/optional account;
+			// the program treats the programId as the sentinel for "no account".
+			organizationFeeRecipient: this.program.programId,
+			referrer: this.program.programId,
 			systemProgram: SystemProgram.programId,
 		};
 	}
@@ -237,8 +239,8 @@ class TestHelper {
 					feeRecipientTokenAccount: this.tokenAccounts.authorityTokenAccount,
 					organization: this.accounts.organizationRecipient.publicKey,
 					organizationTokenAccount: this.tokenAccounts.organizationTokenAccount,
-					referrer: null as PublicKey | null,
-					referrerTokenAccount: null as PublicKey | null,
+					referrer: this.program.programId,
+					referrerTokenAccount: this.program.programId,
 					mint: this.tokenAccounts.tokenMint,
 					tokenProgram: TOKEN_PROGRAM_ID,
 					systemProgram: SystemProgram.programId,
@@ -255,8 +257,11 @@ class TestHelper {
 					merchantTokenAccount: this.tokenAccounts.merchantTokenAccount,
 					mint: this.tokenAccounts.tokenMint,
 					feeRecipientTokenAccount: this.tokenAccounts.authorityTokenAccount,
-					organizationTokenAccount: this.tokenAccounts.organizationTokenAccount,
-					referrerTokenAccount: null as PublicKey | null,
+					// Default to None (programId sentinel). The on-chain hash commits the org ATA
+					// only when org_fee_bps > 0; otherwise it commits Pubkey::default(). Recompute
+					// sites must mirror that — callers override this with the real ATA when org fee > 0.
+					organizationTokenAccount: this.program.programId,
+					referrerTokenAccount: this.program.programId,
 					tokenProgram: TOKEN_PROGRAM_ID,
 					systemProgram: SystemProgram.programId,
 					associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -384,8 +389,9 @@ class TestHelper {
 	async processSOLPayment(params: PaymentTestParams) {
 		const uuid = this.generateUuid();
 
-		// Pick the referrer pubkey for the negative-tests; default to the dedicated referrer
-		let referrerKey: PublicKey | null = null;
+		// Pick the referrer pubkey for the negative-tests; default to the dedicated referrer.
+		// programId is the sentinel for "no referrer" (Anchor ignores it).
+		let referrerKey: PublicKey = this.program.programId;
 		if ((params.referralFeeBps ?? 0) > 0) {
 			if (params.overrideReferrerEqualsOwner) {
 				referrerKey = this.accounts.authority.publicKey;
@@ -406,7 +412,7 @@ class TestHelper {
 				? this.accounts.payer.publicKey
 				: this.accounts.authority.publicKey,
 			organizationFeeRecipient: params.noOrganizationRecipient
-				? null
+				? this.program.programId
 				: this.accounts.organizationRecipient.publicKey,
 			referrer: referrerKey,
 		};
@@ -446,8 +452,9 @@ class TestHelper {
 	async processTokenPayment(params: PaymentTestParams) {
 		const uuid = this.generateUuid();
 
-		let referrerKey: PublicKey | null = null;
-		let referrerAta: PublicKey | null = null;
+		// programId is the sentinel for "no referrer" (Anchor ignores it).
+		let referrerKey: PublicKey = this.program.programId;
+		let referrerAta: PublicKey = this.program.programId;
 		if ((params.referralFeeBps ?? 0) > 0) {
 			if (params.overrideReferrerEqualsOwner) {
 				referrerKey = this.accounts.authority.publicKey;
@@ -470,7 +477,7 @@ class TestHelper {
 				? this.tokenAccounts.payerTokenAccount
 				: this.tokenAccounts.authorityTokenAccount,
 			organizationTokenAccount: params.noOrganizationRecipient
-				? null
+				? this.program.programId
 				: this.tokenAccounts.organizationTokenAccount,
 			referrer: referrerKey,
 			referrerTokenAccount: referrerAta,

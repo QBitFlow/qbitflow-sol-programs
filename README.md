@@ -10,6 +10,7 @@
 🌐 **Website:** [qbitflow.app](https://qbitflow.app)
 
 **Program ID:** [`861HhZZMrLC1twfHciW3YuRviNAKDrEd9uVmqrBHc2f8`](https://solscan.io/address/861HhZZMrLC1twfHciW3YuRviNAKDrEd9uVmqrBHc2f8)
+**Testnet Program ID:** [`DmCGjNxLMc1xzxJQdi6PguTY6JCjBAEmJVMn9JuvPpF`](https://solscan.io/address/DmCGjNxLMc1xzxJQdi6PguTY6JCjBAEmJVMn9JuvPpF?cluster=devnet)
 
 > **Upgrade in progress.** This repository is **v2** of the program. It ships as an **in-place upgrade** of the v1 deployment (same Program ID above — the program is *not* redeployed to a new address). Once v2 is live, the upgrade authority will be **revoked**, making the program **immutable**. v1 was intentionally left upgradeable to allow this update.
 >

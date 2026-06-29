@@ -81,7 +81,7 @@ pub struct RotateSessionSigner<'info> {
     #[account(mut)]
     pub subscriber_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
-    pub organization_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub organization_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
     /// Optional: None when the subscription was created without a referrer.
     #[account(mut)]
     pub referrer_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
@@ -152,7 +152,7 @@ fn rotate_inner(
 
     let merchant_ata_key = ctx.accounts.merchant_token_account.key();
     let subscriber_ata_key = ctx.accounts.subscriber_token_account.key();
-    let organization_ata_key = ctx.accounts.organization_token_account.key();
+    let organization_ata_key = ctx.accounts.organization_token_account.as_ref().map(|a| a.key()).unwrap_or_default();
     let referrer_ata_key = ctx.accounts.referrer_token_account
         .as_ref()
         .map(|a| a.key())
@@ -282,7 +282,7 @@ fn rotate_inner(
         let from_ai = ctx.accounts.subscriber_token_account.to_account_info();
         let authority_ai = ctx.accounts.authority_and_owner.authority.to_account_info();
         let fee_recipient_ai = fee_recipient_token_account.to_account_info();
-        let organization_ai = ctx.accounts.organization_token_account.to_account_info();
+        let organization_ai = ctx.accounts.organization_token_account.as_ref().map(|a| a.to_account_info());
         let merchant_ai = ctx.accounts.merchant_token_account.to_account_info();
         let referrer_ai = ctx.accounts.referrer_token_account.as_ref().map(|a| a.to_account_info());
         let authority_seeds = ctx.accounts.authority_and_owner.authority.get_seeds();
@@ -295,7 +295,7 @@ fn rotate_inner(
             &authority_seeds,
             &fee_recipient_ai,
             referrer_ai.as_ref(),
-            &organization_ai,
+            organization_ai.as_ref(),
             &merchant_ai,
             &amounts,
             decimals,

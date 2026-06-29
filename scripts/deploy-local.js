@@ -49,14 +49,14 @@ const TOKENS = {
 		name: "Mock USDC",
 		symbol: "USDC",
 		decimals: 6, // Real USDC uses 6 decimals
-		mintAmount: 10000, // 10000 USDC
+		mintAmount: 1000000, // 1000000 USDC
 		keypair: usdcKeypair,
 	},
 	WSOL: {
 		name: "Wrapped SOL",
 		symbol: "WSOL",
 		decimals: 9, // Common for Solana tokens
-		mintAmount: 100, // 100 WSOL
+		mintAmount: 10000, // 10000 WSOL
 		keypair: wsolKeypair,
 	},
 };
@@ -68,6 +68,8 @@ let USER_WALLET = createOrLoadKeypair("user");
 
 // Check if ../tests/accounts/merchant.json exists
 let MERCHANT_WALLET = createOrLoadKeypair("merchant");
+
+let TESTS_WALLET = createOrLoadKeypair("tests");
 
 const displayKeyPair = (keypair, name) => {
 	console.log(`${name} Public Key:`, keypair.publicKey.toString());
@@ -109,6 +111,15 @@ async function createAndMintToken(connection, payer, tokenConfig, recipient) {
 
 	console.log(`${tokenConfig.symbol} mint created: ${mint.toString()}`);
 
+	const recipientTokenAccount = await mintToUser(connection, mint, payer, tokenConfig, recipient);
+
+	return {
+		mint: mint.toString(),
+		tokenAccount: recipientTokenAccount.address.toString(),
+	};
+}
+
+async function mintToUser(connection, mint, payer, tokenConfig, recipient) {
 	// Get or create associated token account for recipient
 	const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
 		connection,
@@ -145,10 +156,7 @@ async function createAndMintToken(connection, payer, tokenConfig, recipient) {
 		`${tokenConfig.symbol} token account: ${recipientTokenAccount.address.toString()}`,
 	);
 
-	return {
-		mint: mint.toString(),
-		tokenAccount: recipientTokenAccount.address.toString(),
-	};
+	return recipientTokenAccount;
 }
 
 // Init the on-chain program by calling the initialize method
@@ -229,15 +237,17 @@ async function main() {
 		);
 
 		// Airdrop SOL to deployer if needed
-		if (initialBalance < 2 * LAMPORTS_PER_SOL) {
-			await airdropSol(connection, wallet.publicKey, 100);
-		}
+		await airdropSol(connection, wallet.publicKey, 10000);
+
 
 		// Airdrop SOL to user wallet
-		await airdropSol(connection, USER_WALLET.publicKey, 100);
+		await airdropSol(connection, USER_WALLET.publicKey, 10000);
 
 		// Airdrop SOL to merchant wallet
-		await airdropSol(connection, MERCHANT_WALLET.publicKey, 100);
+		await airdropSol(connection, MERCHANT_WALLET.publicKey, 10000);
+
+		// Airdrop SOL to tests wallet
+		await airdropSol(connection, TESTS_WALLET.publicKey, 10000);
 
 		// Initialize the on-chain program
 		await initProgram(provider, coSignerPubkey);
@@ -256,6 +266,23 @@ async function main() {
 
 			tokenAddresses[symbol] = result.mint;
 			userTokenAccounts[`${symbol}_TOKEN_ACCOUNT`] = result.tokenAccount;
+
+			// Also mint to the merchant wallet and tests wallet for testing purposes
+			await mintToUser(
+				connection,
+				new PublicKey(result.mint),
+				wallet.payer,
+				config,
+				MERCHANT_WALLET.publicKey,
+			);
+
+			await mintToUser(
+				connection,
+				new PublicKey(result.mint),
+				wallet.payer,
+				config,
+				TESTS_WALLET.publicKey,
+			);
 		}
 
 		// Final balance check
@@ -277,6 +304,8 @@ async function main() {
 		const addresses = {
 			DEPLOYER_WALLET: wallet.publicKey.toString(),
 			USER_WALLET: USER_WALLET.publicKey.toString(),
+			MERCHANT_WALLET: MERCHANT_WALLET.publicKey.toString(),
+			TESTS_WALLET: TESTS_WALLET.publicKey.toString(),
 			RPC_URL: connection.rpcEndpoint,
 			...tokenAddresses,
 			...userTokenAccounts,
@@ -298,6 +327,7 @@ async function main() {
 		displayKeyPair(wallet.payer, "Deployer Wallet");
 		displayKeyPair(USER_WALLET, "User Wallet");
 		displayKeyPair(MERCHANT_WALLET, "Merchant Wallet");
+		displayKeyPair(TESTS_WALLET, "Tests Wallet");
 
 		// Load and display your program ID if available
 		// try {

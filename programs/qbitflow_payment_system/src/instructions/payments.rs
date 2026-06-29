@@ -74,7 +74,7 @@ pub struct ProcessTokenPayment<'info> {
 
     /// CHECK: Payer-signed.
     #[account(mut)]
-    pub organization: UncheckedAccount<'info>,
+    pub organization: Option<UncheckedAccount<'info>>,
 
     #[account(
         init_if_needed,
@@ -82,7 +82,7 @@ pub struct ProcessTokenPayment<'info> {
         associated_token::mint = mint,
         associated_token::authority = organization
     )]
-    pub organization_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub organization_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
 
     /// CHECK: Payer-signed. Required when `fee.referral_fee_bps > 0`.
     #[account(mut)]
@@ -91,7 +91,8 @@ pub struct ProcessTokenPayment<'info> {
     /// Referrer ATA. Caller must ensure it exists (e.g. by prepending an
     /// `AssociatedToken::create` ix in the same tx) when `fee.referral_fee_bps > 0`.
     #[account(
-        mut,
+		init_if_needed,
+        payer = authority_and_owner.owner,
         associated_token::mint = mint,
         associated_token::authority = referrer,
     )]
@@ -229,7 +230,9 @@ fn run_token_payment(
     let amounts = calculate_fee(amount, fee.platform_fee_bps, fee.organization_fee_bps, fee.referral_fee_bps, fee.referral_deadline)?;
 
     let org_key = if fee.organization_fee_bps > 0 {
-        Some(ctx.accounts.organization_token_account.key())
+        Some(ctx.accounts.organization_token_account.as_ref()
+            .ok_or(QBitFlowError::MissingOrganizationAccount)?
+            .key())
     } else {
         None
     };
@@ -294,7 +297,9 @@ fn run_token_payment(
                 TransferChecked {
                     from: ctx.accounts.payer_token_account.to_account_info(),
                     mint: ctx.accounts.mint.to_account_info(),
-                    to: ctx.accounts.organization_token_account.to_account_info(),
+                    to: ctx.accounts.organization_token_account.as_ref()
+                        .ok_or(QBitFlowError::MissingOrganizationAccount)?
+                        .to_account_info(),
                     authority: ctx.accounts.payer.to_account_info(),
                 },
             ),

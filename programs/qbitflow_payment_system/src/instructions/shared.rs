@@ -12,7 +12,7 @@ use anchor_spl::token_interface::{self, TransferChecked};
 
 use crate::instructions::compute_refund::{compute_refund, ComputeRefundData};
 use crate::permit::PermitRegistry;
-use crate::state::{create_subscription_hash, Amounts, Fee, Subscription};
+use crate::state::{Amounts, Fee, Subscription, SubscriptionPaymentProcessed, create_subscription_hash};
 use crate::{errors::*, BATCH_ATTESTATION_HASH_DOMAIN};
 
 
@@ -135,7 +135,7 @@ pub fn distribute_payment_pda<'info>(
     authority_seeds: &[&[u8]],
     fee_recipient: &AccountInfo<'info>,
     referrer: Option<&AccountInfo<'info>>,
-    organization: &AccountInfo<'info>,
+    organization: Option<&AccountInfo<'info>>,
     merchant: &AccountInfo<'info>,
     amounts: &Amounts,
     decimals: u8,
@@ -162,6 +162,7 @@ pub fn distribute_payment_pda<'info>(
 
     // Organization fee leg.
     if amounts.org_fee_amount > 0 {
+		let organization = organization.ok_or(QBitFlowError::MissingOrganizationAccount)?;
         transfer_checked_pda(
             token_program, from, mint, organization, authority, signer_seeds,
             amounts.org_fee_amount, decimals,

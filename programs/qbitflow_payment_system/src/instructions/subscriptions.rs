@@ -77,7 +77,7 @@ pub struct CreateSubscription<'info> {
 
     /// CHECK: Organization fee payee; same binding model as `merchant`.
     #[account(mut)]
-    pub organization: UncheckedAccount<'info>,
+    pub organization: Option<UncheckedAccount<'info>>,
 
     #[account(
         init_if_needed,
@@ -85,7 +85,7 @@ pub struct CreateSubscription<'info> {
         associated_token::mint = mint,
         associated_token::authority = organization
     )]
-    pub organization_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub organization_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
 
     /// CHECK: Referrer payee. Bound via subscription_hash on creation. Required when
     /// `referral_fee_bps > 0`; passed as None when no referrer.
@@ -151,7 +151,7 @@ pub struct ExecuteSubscription<'info> {
 
     // Verified by the subscription_hash comparison below.
     #[account(mut)]
-    pub organization_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub organization_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
 
     // Bound by subscription_hash. None when the subscription was created without a referrer
     // (in which case the hash commits to `Pubkey::default()`).
@@ -364,6 +364,11 @@ pub fn create_subscription(
     // Reject garbage SettleMode values (anything outside 0/1/2).
     let settle_mode = SettleMode::from_u8(mode)?;
 
+	// Reject a non-default session_signer for Regular subscriptions. The session_signer is
+	if settle_mode == SettleMode::Regular && session_signer != Pubkey::default() {
+		return err!(QBitFlowError::InvalidSessionSigner);
+	}
+
     // Token-2022 extension policy: reject mints we can't account for safely.
     reject_unsupported_extensions(&ctx.accounts.mint.to_account_info())?;
 
@@ -391,7 +396,7 @@ pub fn create_subscription(
     // Full fee-recipient distinctness (parity with EVM `_validateFeeRecipients`) + merchant must
     // differ from the subscriber. Compares ATA keys (1:1 with (owner, mint)).
     let org_key = if fee.organization_fee_bps > 0 {
-        Some(ctx.accounts.organization_token_account.key())
+        Some(ctx.accounts.organization_token_account.as_ref().ok_or(QBitFlowError::MissingOrganizationAccount)?.key())
     } else {
         None
     };
@@ -440,7 +445,7 @@ pub fn create_subscription(
         &ctx.accounts.merchant_token_account.key(),
         &ctx.accounts.subscriber_token_account.key(),
         frequency,
-        &ctx.accounts.organization_token_account.key(),
+        &org_key.unwrap_or_default(),
         &referrer_ata_key,
         fee.referral_fee_bps,
         fee.referral_deadline,
@@ -468,7 +473,7 @@ pub fn create_subscription(
         let from_ai = ctx.accounts.subscriber_token_account.to_account_info();
         let authority_ai = ctx.accounts.authority_and_owner.authority.to_account_info();
         let fee_recipient_ai = ctx.accounts.fee_recipient_token_account.to_account_info();
-        let organization_ai = ctx.accounts.organization_token_account.to_account_info();
+        let organization_ai = ctx.accounts.organization_token_account.as_ref().map(|a| a.to_account_info());
         let merchant_ai = ctx.accounts.merchant_token_account.to_account_info();
         let referrer_ai = ctx.accounts.referrer_token_account.as_ref().map(|a| a.to_account_info());
         let authority_seeds = ctx.accounts.authority_and_owner.authority.get_seeds();
@@ -481,7 +486,7 @@ pub fn create_subscription(
             &authority_seeds,
             &fee_recipient_ai,
             referrer_ai.as_ref(),
-            &organization_ai,
+            organization_ai.as_ref(),
             &merchant_ai,
             &amounts,
             decimals,
@@ -492,6 +497,17 @@ pub fn create_subscription(
 
         let total_spent = amount.checked_add(refund).ok_or(QBitFlowError::Overflow)?;
         subscription.current_cycle_used = total_spent;
+
+		emit!(SubscriptionPaymentProcessed {
+			uuid,
+			subscriber: subscription.subscriber,
+			mint: ctx.accounts.mint.key(),
+			next_payment_due,
+			remaining_allowance: allowance.checked_sub(total_spent).ok_or(QBitFlowError::Overflow)?,
+			amounts: amounts,
+			refund_amount: refund,
+		});
+
         total_spent
     } else {
         // PAYG: no first bill (usage accrues off-chain, billed at period end). Just pull the
@@ -552,17 +568,15 @@ pub fn execute_subscription(
     frequency: u32,
     fee: Fee,
     compute_refund_params: ComputeRefundData,
-    mode: u8,
-    session_signer: Pubkey,
 ) -> Result<()> {
-    // PAYG subscriptions settle via the dedicated handlers. If the caller passed mode != 0,
-    // the hash check below would already fail — but bail early with a clearer error.
-    if SettleMode::from_u8(mode)? != SettleMode::Regular {
-        return err!(QBitFlowError::WrongSettleMode);
-    }
-
     let now = Clock::get()?.unix_timestamp;
     let subscription = &mut ctx.accounts.subscription;
+
+	// PAYG subscriptions settle via the dedicated handlers. If the caller passed mode != 0,
+    // the hash check below would already fail — but bail early with a clearer error.
+    if SettleMode::from_u8(subscription.mode)? != SettleMode::Regular {
+        return err!(QBitFlowError::WrongSettleMode);
+    }
 
     if now < subscription.next_payment_due {
         return err!(QBitFlowError::PaymentNotDueYet);
@@ -575,6 +589,7 @@ pub fn execute_subscription(
         return err!(QBitFlowError::MaxAmountExceeded);
     }
 
+
     // Re-derive the hash from caller-supplied referral terms. Hash mismatch reverts.
     let referrer_ata_key_for_hash = ctx.accounts.referrer_token_account
         .as_ref()
@@ -585,11 +600,11 @@ pub fn execute_subscription(
         &ctx.accounts.merchant_token_account.key(),
         &ctx.accounts.subscriber_token_account.key(),
         frequency,
-        &ctx.accounts.organization_token_account.key(),
+        &ctx.accounts.organization_token_account.as_ref().map(|a| a.key()).unwrap_or_default(),
         &referrer_ata_key_for_hash,
         &fee,
-        &session_signer,
-        mode,
+        &Pubkey::default(),
+        subscription.mode,
     )?;
 
     check_subscription_allowance(subscription, &ctx.accounts.permit_registry, amount)?;
@@ -608,7 +623,7 @@ pub fn execute_subscription(
     let from_ai = ctx.accounts.subscriber_token_account.to_account_info();
     let authority_ai = ctx.accounts.authority_and_owner.authority.to_account_info();
     let fee_recipient_ai = ctx.accounts.fee_recipient_token_account.to_account_info();
-    let organization_ai = ctx.accounts.organization_token_account.to_account_info();
+    let organization_ai = ctx.accounts.organization_token_account.as_ref().map(|a| a.to_account_info());
     let merchant_ai = ctx.accounts.merchant_token_account.to_account_info();
     let referrer_ai = ctx.accounts.referrer_token_account.as_ref().map(|a| a.to_account_info());
     let authority_seeds = ctx.accounts.authority_and_owner.authority.get_seeds();
@@ -621,7 +636,7 @@ pub fn execute_subscription(
         &authority_seeds,
         &fee_recipient_ai,
         referrer_ai.as_ref(),
-        &organization_ai,
+        organization_ai.as_ref(),
         &merchant_ai,
         &amounts,
         decimals,

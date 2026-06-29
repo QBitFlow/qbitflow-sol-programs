@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 pub mod constants;
 pub use constants::*;
 
-declare_id!("47Xz4vVaw1Bi45goXDanywRW1HzC1zYgEVMzVFDkCbiu");
+declare_id!("C3geN9BD69RSjRmLX85NjpChzkoQKvNXHjTgSVDoV5xW");
 
 pub mod instructions;
 pub mod errors;
@@ -109,12 +109,10 @@ pub mod qbitflow_payment_system {
         frequency: u32,
         fee: Fee,
         compute_refund_params: ComputeRefundData,
-        mode: u8,
-        session_signer: Pubkey,
     ) -> Result<()> {
         instructions::execute_subscription(
             ctx, amount, uuid, frequency,
-            fee, compute_refund_params, mode, session_signer,
+            fee, compute_refund_params,
         )
     }
 

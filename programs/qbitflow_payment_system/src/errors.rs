@@ -108,4 +108,7 @@ pub enum QBitFlowError {
 
     #[msg("New value equals the current value (no-op)")]
     NoChange,
+
+	#[msg("Session signer does not match the subscription's session_signer")]
+	InvalidSessionSigner
 }

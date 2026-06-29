@@ -5,35 +5,27 @@ package_manager = "npm"
 [features]
 resolution = true
 skip-lint = false
-seeds = false
-
-# Run surfpool in clock mode so the on-chain clock advances with real time. The subscription
-# period tests rely on wall-clock `sleep()` to cross `next_payment_due`; surfpool's default
-# `transaction` mode freezes the clock (and its `timeTravel` cheatcode panics with a
-# divide-by-zero in that mode), so the time-gated tests can only run under clock mode.
-[surfpool]
-block_production_mode = "clock"
 
 [programs.localnet]
-qbitflow_payment_system = "47Xz4vVaw1Bi45goXDanywRW1HzC1zYgEVMzVFDkCbiu"
-
-[registry]
-url = "https://api.apr.dev"
+qbitflow_payment_system = "C3geN9BD69RSjRmLX85NjpChzkoQKvNXHjTgSVDoV5xW"
 
 [provider]
 cluster = "localnet"
-# wallet = "~/.config/solana/id.json"
 wallet = "~/.config/solana/id-test.json"
-# wallet = "target/deploy/qbitflow_payment_system-keypair.json"
 
 [scripts]
-# Bypass ts-mocha: its CJS `main` confuses Node 24's ESM resolver via chai@6.
-# `mocha --require ts-node/register` is equivalent and works.
 test = "node node_modules/mocha/bin/mocha.js --require ts-node/register -t 1000000 tests/**/*.ts"
 
-
+[hooks]
 
 [test]
 startup_wait = 5000
 shutdown_wait = 2000
 upgradeable = false
+
+[surfpool]
+startup_wait = 5000
+shutdown_wait = 2000
+rpc_port = 8899
+host = "127.0.0.1"
+block_production_mode = "clock"

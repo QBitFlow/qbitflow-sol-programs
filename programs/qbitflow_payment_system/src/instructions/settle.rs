@@ -77,7 +77,7 @@ pub struct SettlePayg<'info> {
 
     // Verified by the subscription_hash comparison.
     #[account(mut)]
-    pub organization_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub organization_token_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
 
     // Bound by subscription_hash. None when the subscription was created without a referrer.
     #[account(mut)]
@@ -217,7 +217,7 @@ fn settle_inner(
         &ctx.accounts.merchant_token_account.key(),
         &ctx.accounts.subscriber_token_account.key(),
         args.frequency,
-        &ctx.accounts.organization_token_account.key(),
+        &ctx.accounts.organization_token_account.as_ref().map(|a| a.key()).unwrap_or_default(),
         &referrer_ata_key_for_hash,
         &args.fee,
         &args.session_signer,
@@ -254,7 +254,7 @@ fn settle_inner(
     let from_ai = ctx.accounts.subscriber_token_account.to_account_info();
     let authority_ai = ctx.accounts.authority_and_owner.authority.to_account_info();
     let fee_recipient_ai = ctx.accounts.fee_recipient_token_account.to_account_info();
-    let organization_ai = ctx.accounts.organization_token_account.to_account_info();
+    let organization_ai = ctx.accounts.organization_token_account.as_ref().map(|a| a.to_account_info());
     let merchant_ai = ctx.accounts.merchant_token_account.to_account_info();
     let referrer_ai = ctx.accounts.referrer_token_account.as_ref().map(|a| a.to_account_info());
     let authority_seeds = ctx.accounts.authority_and_owner.authority.get_seeds();
@@ -267,7 +267,7 @@ fn settle_inner(
         &authority_seeds,
         &fee_recipient_ai,
         referrer_ai.as_ref(),
-        &organization_ai,
+        organization_ai.as_ref(),
         &merchant_ai,
         &amounts,
         decimals,
