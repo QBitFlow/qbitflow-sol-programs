@@ -5,10 +5,10 @@ pub const FEE_DENOMINATOR: u16 = 10000;
 
 // Drain-rate cap floor. Matches EVM `MIN_FREQUENCY` (1 hour). No upper bound (EVM has none;
 // `frequency: u32` seconds is self-bounding at ~136 years).
-// pub const MIN_FREQUENCY: u32 = 3600; // 1 hour in seconds — PRODUCTION value
+pub const MIN_FREQUENCY: u32 = 3600; // 1 hour in seconds — PRODUCTION value
 // NOTE: the integration suite (tests/test.ts) uses FREQUENCY=5, so before running `anchor test`
 // temporarily lower this to 5, then restore it afterward (see the TODO at the top of test.ts).
-pub const MIN_FREQUENCY: u32 = 60; // 1 minute in seconds — TEST value
+// pub const MIN_FREQUENCY: u32 = 60; // 1 minute in seconds — TEST value
 
 
 pub const MIN_FEE_FOR_CONTRACT_BPS: u16 = 50; // 0.50%
