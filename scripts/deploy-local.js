@@ -15,63 +15,61 @@ const fs = require("fs");
 const path = require("path");
 const { bs58 } = require("@coral-xyz/anchor/dist/cjs/utils/bytes");
 
+
+
+const createOrLoadKeypair = (name) => {
+	let keypair = null
+	const p = `../tests/accounts/${name}.json`
+	if (fs.existsSync(path.join(__dirname, p))) {
+		const keypairData = JSON.parse(
+			fs.readFileSync(path.join(__dirname, p)),
+		);
+		keypair = Keypair.fromSecretKey(new Uint8Array(keypairData));
+	} else {
+		keypair = Keypair.generate();
+		fs.writeFileSync(
+			path.join(__dirname, p),
+			JSON.stringify(Array.from(keypair.secretKey)),
+		);
+		console.log(
+			`Generated new ${name} wallet and saved to ../tests/accounts/${name}.json`,
+		);
+	}
+	
+	return keypair;
+}
+
+// Create a load keypairs for the tokens (otherwise random and need to update database on each run)
+const usdcKeypair = createOrLoadKeypair("usdc");
+const wsolKeypair = createOrLoadKeypair("wsol");
+
 // Token configurations (similar to your USDC/WETH)
 const TOKENS = {
 	USDC: {
 		name: "Mock USDC",
 		symbol: "USDC",
 		decimals: 6, // Real USDC uses 6 decimals
-		mintAmount: 1000, // 1000 USDC
+		mintAmount: 1000000, // 1000000 USDC
+		keypair: usdcKeypair,
 	},
 	WSOL: {
 		name: "Wrapped SOL",
 		symbol: "WSOL",
 		decimals: 9, // Common for Solana tokens
-		mintAmount: 50, // 50 WSOL
+		mintAmount: 10000, // 10000 WSOL
+		keypair: wsolKeypair,
 	},
 };
 
 // Create a new wallet for the user
 
 // Check if ../tests/accounts/user.json exists
-let USER_WALLET;
-if (fs.existsSync(path.join(__dirname, "../tests/accounts/user.json"))) {
-	const userKeypairData = JSON.parse(
-		fs.readFileSync(path.join(__dirname, "../tests/accounts/user.json")),
-	);
-	USER_WALLET = Keypair.fromSecretKey(new Uint8Array(userKeypairData));
-} else {
-	USER_WALLET = Keypair.generate();
-	fs.writeFileSync(
-		path.join(__dirname, "../tests/accounts/user.json"),
-		JSON.stringify(Array.from(USER_WALLET.secretKey)),
-	);
-	console.log(
-		"Generated new user wallet and saved to ../tests/accounts/user.json",
-	);
-}
+let USER_WALLET = createOrLoadKeypair("user");
 
 // Check if ../tests/accounts/merchant.json exists
-let MERCHANT_WALLET;
-if (fs.existsSync(path.join(__dirname, "../tests/accounts/merchant.json"))) {
-	const merchantKeypairData = JSON.parse(
-		fs.readFileSync(
-			path.join(__dirname, "../tests/accounts/merchant.json"),
-		),
-	);
-	MERCHANT_WALLET = Keypair.fromSecretKey(
-		new Uint8Array(merchantKeypairData),
-	);
-} else {
-	MERCHANT_WALLET = Keypair.generate();
-	fs.writeFileSync(
-		path.join(__dirname, "../tests/accounts/merchant.json"),
-		JSON.stringify(Array.from(MERCHANT_WALLET.secretKey)),
-	);
-	console.log(
-		"Generated new merchant wallet and saved to ../tests/accounts/merchant.json",
-	);
-}
+let MERCHANT_WALLET = createOrLoadKeypair("merchant");
+
+let TESTS_WALLET = createOrLoadKeypair("tests");
 
 const displayKeyPair = (keypair, name) => {
 	console.log(`${name} Public Key:`, keypair.publicKey.toString());
@@ -108,10 +106,20 @@ async function createAndMintToken(connection, payer, tokenConfig, recipient) {
 		payer.publicKey, // Mint authority
 		payer.publicKey, // Freeze authority (optional)
 		tokenConfig.decimals, // Decimals
+		tokenConfig.keypair, // Use the provided keypair for the mint
 	);
 
 	console.log(`${tokenConfig.symbol} mint created: ${mint.toString()}`);
 
+	const recipientTokenAccount = await mintToUser(connection, mint, payer, tokenConfig, recipient);
+
+	return {
+		mint: mint.toString(),
+		tokenAccount: recipientTokenAccount.address.toString(),
+	};
+}
+
+async function mintToUser(connection, mint, payer, tokenConfig, recipient) {
 	// Get or create associated token account for recipient
 	const recipientTokenAccount = await getOrCreateAssociatedTokenAccount(
 		connection,
@@ -148,10 +156,7 @@ async function createAndMintToken(connection, payer, tokenConfig, recipient) {
 		`${tokenConfig.symbol} token account: ${recipientTokenAccount.address.toString()}`,
 	);
 
-	return {
-		mint: mint.toString(),
-		tokenAccount: recipientTokenAccount.address.toString(),
-	};
+	return recipientTokenAccount;
 }
 
 // Init the on-chain program by calling the initialize method
@@ -161,6 +166,8 @@ async function initProgram(provider, coSignerPubkey) {
 
 	console.log("\nInitializing on-chain program...");
 	console.log("Co-signer Public Key:", coSignerPubkey);
+	console.log("Deployer Public Key:", provider.wallet.publicKey.toString());
+	console.log("Program ID:", program.programId.toString());
 
 	const [authorityAccountPda, authorityAccountPdaBump] =
 		PublicKey.findProgramAddressSync(
@@ -230,15 +237,17 @@ async function main() {
 		);
 
 		// Airdrop SOL to deployer if needed
-		if (initialBalance < 2 * LAMPORTS_PER_SOL) {
-			await airdropSol(connection, wallet.publicKey, 10);
-		}
+		await airdropSol(connection, wallet.publicKey, 10000);
+
 
 		// Airdrop SOL to user wallet
-		await airdropSol(connection, USER_WALLET.publicKey, 5);
+		await airdropSol(connection, USER_WALLET.publicKey, 10000);
 
 		// Airdrop SOL to merchant wallet
-		await airdropSol(connection, MERCHANT_WALLET.publicKey, 1);
+		await airdropSol(connection, MERCHANT_WALLET.publicKey, 10000);
+
+		// Airdrop SOL to tests wallet
+		await airdropSol(connection, TESTS_WALLET.publicKey, 10000);
 
 		// Initialize the on-chain program
 		await initProgram(provider, coSignerPubkey);
@@ -257,6 +266,23 @@ async function main() {
 
 			tokenAddresses[symbol] = result.mint;
 			userTokenAccounts[`${symbol}_TOKEN_ACCOUNT`] = result.tokenAccount;
+
+			// Also mint to the merchant wallet and tests wallet for testing purposes
+			await mintToUser(
+				connection,
+				new PublicKey(result.mint),
+				wallet.payer,
+				config,
+				MERCHANT_WALLET.publicKey,
+			);
+
+			await mintToUser(
+				connection,
+				new PublicKey(result.mint),
+				wallet.payer,
+				config,
+				TESTS_WALLET.publicKey,
+			);
 		}
 
 		// Final balance check
@@ -278,6 +304,8 @@ async function main() {
 		const addresses = {
 			DEPLOYER_WALLET: wallet.publicKey.toString(),
 			USER_WALLET: USER_WALLET.publicKey.toString(),
+			MERCHANT_WALLET: MERCHANT_WALLET.publicKey.toString(),
+			TESTS_WALLET: TESTS_WALLET.publicKey.toString(),
 			RPC_URL: connection.rpcEndpoint,
 			...tokenAddresses,
 			...userTokenAccounts,
@@ -299,6 +327,7 @@ async function main() {
 		displayKeyPair(wallet.payer, "Deployer Wallet");
 		displayKeyPair(USER_WALLET, "User Wallet");
 		displayKeyPair(MERCHANT_WALLET, "Merchant Wallet");
+		displayKeyPair(TESTS_WALLET, "Tests Wallet");
 
 		// Load and display your program ID if available
 		// try {
