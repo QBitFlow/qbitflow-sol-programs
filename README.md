@@ -30,7 +30,7 @@ QBitFlow is a decentralized payment system for **non-custodial** one-time paymen
 - 🔐 **PDA-Based Delegation** — the program's Authority PDA is the SPL delegate; it can pull only what the subscriber pre-approved.
 - 📊 **Permit Registry** — per `(subscriber, mint)` allowance accounting shared across all of a user's subscriptions.
 - 🔑 **Session-Signer Rotation** — off-chain receipt-signing keys can be rotated, optionally settling a final batch atomically under the old key.
-- 🧾 **Subscription Digest** — a domain-tagged hash commits every consent-bearing parameter, so a compromised relayer cannot vary fees, frequency, mode, recipients, or signing keys.
+- 🧾 **Subscription Digest** — a domain-tagged hash commits the recipients, frequency, mode, referral terms and signing key, so a compromised relayer cannot vary them. Platform and organization fee rates are set per bill within hard on-chain caps (see [Key Design Decision 2](#2-the-subscription-digest-is-the-single-source-of-consent)).
 
 ## 🧭 Settlement Modes
 
@@ -280,7 +280,16 @@ These are the deliberate engineering choices behind the program — worth unders
 On EVM, consent is carried by EIP-712 signatures the operator submits. On Solana, the **subscriber/payer signs the actual transaction**. This is simpler and trust-minimizing: the wallet shows the real accounts (merchant, amounts, fees) before signing. A direct consequence: `max_amount_per_cycle` is **deliberately excluded** from the subscription digest — the user signs every create/update/cancel tx themselves, so there is no need to commit the cap into a hash (and doing so would force a digest rewrite on every cap change).
 
 ### 2. The subscription digest is the single source of consent
-`create_subscription_hash` produces a domain-tagged (`qbf:sub:v2`) hash over: merchant ATA, subscriber ATA, frequency, organization ATA, referrer ATA, referral bps, referral deadline, **session signer**, and **mode**. Every settle/rotate re-derives this hash from caller-supplied params and rejects any mismatch. **Even a fully compromised relayer cannot** change the merchant, fee schedule, frequency, mode, referral terms, or signing key. The mint is bound implicitly because ATAs derive from `(owner, mint)`.
+`create_subscription_hash` produces a domain-tagged (`qbf:sub:v2`) hash over: merchant ATA, subscriber ATA, frequency, organization ATA, referrer ATA, referral bps, referral deadline, **session signer**, and **mode**. Every settle/rotate re-derives this hash from caller-supplied params and rejects any mismatch. **Even a fully compromised relayer cannot** change the merchant, organization or referrer, the frequency, the mode, the referral terms, or the signing key. The mint is bound implicitly because ATAs derive from `(owner, mint)`.
+
+**Fee rates are a bounded operator trust assumption.** `platform_fee_bps` and `organization_fee_bps` are deliberately **not** in the digest: the relayer passes them on every bill, so QBitFlow (whose pricing is volume-based) and organizations can change their rates over a subscription's life, in either direction, without every subscriber re-signing. What keeps this safe:
+- **Hard caps on-chain:** platform ≤ 15 % (`MAX_FEE_PLATFORM_BPS`), organization ≤ 50 % (`MAX_FEE_ORGANIZATION_BPS`). No rate can send a whole bill to QBitFlow or the organization.
+- **Fixed recipients:** merchant, organization and referrer ATAs are committed in the digest, and the platform fee goes to the owner's ATA, so changing a rate can't pay a new party. (The atomic-rotate settle path doesn't enforce the owner's ATA yet: `PARITY.md` P-57.)
+- **Fixed referral terms:** a referrer can't be added or changed later.
+- **The subscriber is unaffected:** fees are split out of the billed amount, which is bounded by the per-cycle cap the subscriber signed.
+- **Transparent:** every bill emits its full split (`Amounts`), so merchants can reconcile each payment.
+
+The residual risk: within those caps, a compromised or malicious relayer could shift part of each bill from the merchant to the fee accounts. Merchants trust QBitFlow for this (`SPEC.md` §0.1, `PARITY.md` P-61).
 
 ### 3. Session signer is stored only in the digest, not as a field
 Rather than persist `session_signer` (and a version counter) in account state, it lives **only** inside the digest. Rotation rewrites the digest; off-chain readers reconstruct the current signer from the `SubscriptionCreated` + `SessionSignerRotated` event log. This shrinks the account and removes a class of "field vs. hash" drift bugs.

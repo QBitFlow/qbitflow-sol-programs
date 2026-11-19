@@ -39,8 +39,9 @@ pub fn batch_attestation_message(
 
 
 /// Recompute the subscription hash from caller-supplied params and reject any drift from the
-/// stored digest. `max_amount_per_cycle` is deliberately NOT part of the hash (see
-/// `create_subscription_hash`), so it is not a parameter here.
+/// stored digest. `max_amount_per_cycle` and the platform / organization fee rates are
+/// deliberately NOT part of the hash (see `create_subscription_hash`): only `fee`'s referral
+/// terms are checked here.
 #[allow(clippy::too_many_arguments)]
 pub fn verify_subscription_digest(
     subscription: &Subscription,

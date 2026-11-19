@@ -320,11 +320,13 @@ pub struct ExtendAllowance<'info> {
 
 /// Create a subscription. Mode is bound at creation and immutable thereafter.
 ///
-/// Subscribers commit to a per-period `max_amount` cap, a `fee_bps` / `organization_fee_bps`
-/// rate, the referral terms, **the settle mode**, and the **off-chain session signer** — all
-/// baked into a domain-tagged hash on the subscription PDA. Every settle (regular or PAYG)
-/// re-derives this hash and rejects any drift, so even a compromised relayer cannot vary the
-/// fee schedule, switch the mode, or substitute the receipt-signing key.
+/// Subscribers commit to a per-period `max_amount` cap (stored on the subscription) and to the
+/// recipients, frequency, referral terms, **the settle mode** and the **off-chain session
+/// signer**, all baked into a domain-tagged hash on the subscription PDA. Every settle (regular
+/// or PAYG) re-derives this hash and rejects any drift, so even a compromised relayer cannot
+/// redirect funds, change the referral terms, switch the mode, or substitute the receipt-signing
+/// key. The platform and organization fee rates are not committed: the relayer sets them per bill,
+/// within the on-chain caps (see `create_subscription_hash`).
 ///
 /// Mode:
 ///   - `Regular` (0): billed via `execute_subscription`. First bill is due immediately.
@@ -557,7 +559,9 @@ pub fn create_subscription(
 /// Execute a billing on a Regular subscription.
 ///
 /// Re-derives and compares the subscription hash to reject any drift in merchant /
-/// subscriber / org ATA / frequency / fee rates / referral terms / mode / session signer.
+/// subscriber / org ATA / frequency / referral terms / mode / session signer. The platform and
+/// organization fee rates are per-bill relayer inputs, bounded by the on-chain caps (see
+/// `create_subscription_hash`).
 /// Pulls `amount` from the subscriber via the program PDA delegate, splits into owner fee +
 /// referral fee (if active) + org fee + merchant payment, and updates the registry.
 /// Rejects PAYG modes — use `settle_x402_batch` or `settle_merchant_x402_batch` instead.

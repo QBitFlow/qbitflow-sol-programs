@@ -78,9 +78,10 @@ pub mod qbitflow_payment_system {
 
     /// Create a subscription. `mode` (Regular / X402 / MerchantX402) is bound at creation
     /// and immutable thereafter; `session_signer` is the off-chain receipt-signing key
-    /// (`Pubkey::default()` means the subscriber signs receipts directly). All of mode,
-    /// session_signer, fee schedule, frequency, ATAs, and referral terms are committed into
-    /// the on-chain subscription_hash so the relayer cannot vary them between settlements.
+    /// (`Pubkey::default()` means the subscriber signs receipts directly). Mode,
+    /// session_signer, frequency, ATAs and referral terms are committed into the on-chain
+    /// subscription_hash so the relayer cannot vary them between settlements. The platform and
+    /// organization fee rates are not: the relayer sets them per bill, within the on-chain caps.
     pub fn create_subscription(
         ctx: Context<CreateSubscription>,
         uuid: [u8; 16],

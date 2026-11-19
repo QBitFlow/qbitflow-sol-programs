@@ -374,6 +374,15 @@ pub fn validate_fee_recipients(
 //
 // Referral fields are always hashed — when there's no referrer, they are zero/default. That
 // commits "no referrer" into the subscription so the relayer can't inject one later.
+//
+// `platform_fee_bps` and `organization_fee_bps` are deliberately EXCLUDED: the relayer passes them
+// on every bill so QBitFlow (volume-based pricing) and the organization can change their rates
+// during a subscription's life, in either direction, without every subscriber re-signing. This is
+// an operator trust assumption, bounded on-chain: the rates are capped (`MAX_FEE_PLATFORM_BPS`,
+// `MAX_FEE_ORGANIZATION_BPS`), every recipient is committed here (so a rate change can't pay a
+// new party), and the subscriber never pays more than the per-cycle cap. Within those caps a
+// compromised relayer can shift part of each bill from the merchant to the fee accounts
+// (SPEC §0.1, P-61).
 pub fn create_subscription_hash(
     merchant_token_account: &Pubkey,
     subscriber_token_account: &Pubkey,
